@@ -64,7 +64,9 @@ trait HasSlug
      */
     public function getSlugSourceField(): string
     {
-        return $this->slugSourceField ?? config('slug.default_source_field', 'name');
+        return property_exists($this, 'slugSourceField') && isset($this->slugSourceField)
+            ? $this->slugSourceField
+            : config('slug.default_source_field', 'name');
     }
 
     /**
@@ -81,7 +83,9 @@ trait HasSlug
      */
     public function getRegenerateSlugOnUpdate(): bool
     {
-        return $this->regenerateSlugOnUpdate ?? config('slug.regenerate_on_update', true);
+        return property_exists($this, 'regenerateSlugOnUpdate') && isset($this->regenerateSlugOnUpdate)
+            ? $this->regenerateSlugOnUpdate
+            : config('slug.regenerate_on_update', true);
     }
 
     /**
@@ -98,7 +102,9 @@ trait HasSlug
      */
     public function getSlugSeparator(): string
     {
-        return $this->slugSeparator ?? config('slug.default_separator', '-');
+        return property_exists($this, 'slugSeparator') && isset($this->slugSeparator)
+            ? $this->slugSeparator
+            : config('slug.default_separator', '-');
     }
 
     /**
@@ -115,7 +121,9 @@ trait HasSlug
      */
     public function getSlugColumn(): string
     {
-        return $this->slugColumn ?? config('slug.default_column', 'slug');
+        return property_exists($this, 'slugColumn') && isset($this->slugColumn)
+            ? $this->slugColumn
+            : config('slug.default_column', 'slug');
     }
 
     /**
