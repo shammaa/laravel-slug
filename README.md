@@ -37,13 +37,19 @@ Since the package is not yet published on Packagist, add the repository to your 
 ### Step 2: Install via Composer
 
 ```bash
-composer require shammaa/laravel-slug
+composer require shammaa/laravel-slug:^1.0
+```
+
+**Or install latest stable:**
+
+```bash
+composer require shammaa/laravel-slug:1.0.0
 ```
 
 **Or install directly:**
 
 ```bash
-composer require shammaa/laravel-slug:dev-main
+composer require shammaa/laravel-slug
 ```
 
 ### Step 2: Publish Configuration (Optional)
