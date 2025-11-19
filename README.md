@@ -54,13 +54,7 @@ Then run:
 composer require shammaa/laravel-slug
 ```
 
-**Or install directly:**
-
-```bash
-composer require shammaa/laravel-slug
-```
-
-### Step 2: Publish Configuration (Optional)
+### Step 3: Publish Configuration (Optional)
 
 ```bash
 php artisan vendor:publish --tag=slug-config
