@@ -11,22 +11,22 @@ trait HasSlug
     /**
      * Source field for slug generation
      */
-    protected string $slugSourceField = 'name';
+    protected ?string $slugSourceField = null;
 
     /**
      * Regenerate slug on update
      */
-    protected bool $regenerateSlugOnUpdate = true;
+    protected ?bool $regenerateSlugOnUpdate = null;
 
     /**
      * Slug separator
      */
-    protected string $slugSeparator = '-';
+    protected ?string $slugSeparator = null;
 
     /**
      * Slug column name
      */
-    protected string $slugColumn = 'slug';
+    protected ?string $slugColumn = null;
 
     /**
      * Boot the trait
@@ -38,7 +38,7 @@ trait HasSlug
         });
 
         static::updating(function ($model) {
-            if ($model->regenerateSlugOnUpdate && $model->isDirty($model->slugSourceField)) {
+            if ($model->getRegenerateSlugOnUpdate() && $model->isDirty($model->getSlugSourceField())) {
                 $model->generateSlug();
             }
         });
@@ -49,7 +49,8 @@ trait HasSlug
      */
     public function generateSlug(): void
     {
-        $sourceValue = $this->getAttribute($this->slugSourceField);
+        $sourceField = $this->getSlugSourceField();
+        $sourceValue = $this->getAttribute($sourceField);
 
         if (empty($sourceValue)) {
             return;
@@ -67,12 +68,12 @@ trait HasSlug
         $slug = $slugService->generateUnique(
             $sourceValue,
             $table,
-            $this->slugColumn,
-            $this->slugSeparator,
+            $this->getSlugColumn(),
+            $this->getSlugSeparator(),
             $excludeId
         );
 
-        $this->setAttribute($this->slugColumn, $slug);
+        $this->setAttribute($this->getSlugColumn(), $slug);
     }
 
     /**
@@ -80,7 +81,7 @@ trait HasSlug
      */
     public function getSlugSourceField(): string
     {
-        return $this->slugSourceField;
+        return $this->slugSourceField ?? config('slug.default_source_field', 'name');
     }
 
     /**
@@ -97,7 +98,7 @@ trait HasSlug
      */
     public function getRegenerateSlugOnUpdate(): bool
     {
-        return $this->regenerateSlugOnUpdate;
+        return $this->regenerateSlugOnUpdate ?? config('slug.regenerate_on_update', true);
     }
 
     /**
@@ -114,7 +115,7 @@ trait HasSlug
      */
     public function getSlugSeparator(): string
     {
-        return $this->slugSeparator;
+        return $this->slugSeparator ?? config('slug.default_separator', '-');
     }
 
     /**
@@ -131,7 +132,7 @@ trait HasSlug
      */
     public function getSlugColumn(): string
     {
-        return $this->slugColumn;
+        return $this->slugColumn ?? config('slug.default_column', 'slug');
     }
 
     /**
