@@ -16,10 +16,34 @@ A professional, multilingual slug generator for Laravel with automatic model int
 
 ## Installation
 
-### Step 1: Install via Composer
+### Step 1: Add Repository to composer.json
+
+Since the package is not yet published on Packagist, add the repository to your `composer.json`:
+
+```json
+{
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/shammaa/laravel-slug"
+        }
+    ],
+    "require": {
+        "shammaa/laravel-slug": "^1.0"
+    }
+}
+```
+
+### Step 2: Install via Composer
 
 ```bash
 composer require shammaa/laravel-slug
+```
+
+**Or install directly:**
+
+```bash
+composer require shammaa/laravel-slug:dev-main
 ```
 
 ### Step 2: Publish Configuration (Optional)
