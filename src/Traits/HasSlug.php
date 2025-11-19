@@ -8,25 +8,8 @@ use Shammaa\LaravelSlug\Services\SlugService;
 
 trait HasSlug
 {
-    /**
-     * Source field for slug generation
-     */
-    protected ?string $slugSourceField = null;
-
-    /**
-     * Regenerate slug on update
-     */
-    protected ?bool $regenerateSlugOnUpdate = null;
-
-    /**
-     * Slug separator
-     */
-    protected ?string $slugSeparator = null;
-
-    /**
-     * Slug column name
-     */
-    protected ?string $slugColumn = null;
+    // Properties are defined in the model, not in the trait
+    // This avoids property conflict when model defines them
 
     /**
      * Boot the trait
