@@ -24,11 +24,6 @@ composer require shammaa/laravel-slug
 
 **That's it!** The package will be installed automatically.
 
-> **Note:** If Composer cannot find the package, add the repository first:
-> ```bash
-> composer config repositories.laravel-slug vcs https://github.com/shammaa/laravel-slug
-> ```
-
 ### Publish Configuration (Optional)
 
 ```bash
