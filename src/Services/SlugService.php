@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Shammaa\LaravelSlug\Services;
 
+use Illuminate\Support\Facades\Log;
+use Shammaa\LaravelSlug\Exceptions\InvalidSlugException;
+use Shammaa\LaravelSlug\Services\SlugValidator;
+
 use Illuminate\Support\Facades\DB;
 
 class SlugService
