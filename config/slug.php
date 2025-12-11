@@ -72,5 +72,6 @@ return [
     |
     */
     'use_intl' => true,
+
 ];
 

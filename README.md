@@ -1,18 +1,18 @@
 # Laravel Slug Package
 
-A professional, multilingual slug generator for Laravel with automatic model integration. This package provides powerful slug generation with excellent support for preserving original language characters (Arabic, French, Hindi, Persian, Russian, Chinese, and many more) or transliterating them to Latin characters.
+A simple, professional slug generator for Laravel. Takes text → generates slug. That's it!
+
+**Core Purpose:** Convert any text into a URL-friendly slug (e.g., "مقالات تقنية" → "مقالات-تقنية" or "maqalat-taqniya").
 
 ## Features
 
-- ✅ **Automatic Model Integration** - Simply add the `HasSlug` trait to your model
-- ✅ **Preserve Original Language** - Keeps original characters by default (Arabic, French, Hindi, Persian, etc.)
-- ✅ **Multilingual Support** - Supports 100+ languages with or without transliteration
-- ✅ **Configurable per Model** - Customize source field, separator, and regeneration behavior
-- ✅ **Unique Slug Generation** - Automatically ensures slugs are unique in database
-- ✅ **Auto-regeneration** - Optionally regenerate slug when source field changes
-- ✅ **Number Conversion** - Converts Arabic numbers to English automatically
-- ✅ **Clean & Professional** - Removes HTML tags, punctuation, and special characters
-- ✅ **PHP Intl Integration** - Optional Intl Transliterator for transliteration mode
+- ✅ **Simple & Clean** - Takes text, generates slug. That's it!
+- ✅ **Automatic Model Integration** - Add trait, done!
+- ✅ **Supports Translated Fields** - Works with translation packages (optional)
+- ✅ **Preserve Original Language** - Keeps Arabic/Unicode characters by default
+- ✅ **Unique Slugs** - Automatically ensures uniqueness in database
+- ✅ **Auto-regeneration** - Regenerates when source field changes
+- ✅ **Clean Text** - Removes HTML, punctuation, special characters
 
 ## Installation
 
@@ -251,6 +251,37 @@ class Product extends Model
     protected $slugColumn = 'url_slug';  // Use different column name
 }
 ```
+
+### Translated Fields Support (Simple)
+
+If your field is stored in a translation table (like `lexi_translations`), just enable it:
+
+```php
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSourceIsTranslated = true;  // That's it!
+}
+
+// Works automatically - gets value from translation
+$taxonomy = new Taxonomy();
+$taxonomy->setTranslation('name', 'ar', 'مقالات تقنية');
+$taxonomy->save();
+// Slug: "مقالات-تقنية" ✅
+```
+
+**That's it!** The package automatically:
+- Detects if field is translated
+- Gets value from translation (before or after save)
+- Generates slug from that value
+
+**How It Works:**
+- Uses `app()->getLocale()` automatically (current site language)
+- Works with any translation package (Spatie, Astrotomic, custom, etc.)
+- Detects translations before save (pending) or after save (from database)
+- Supports all common patterns: `translate()`, `setTranslation()`, `getTranslation()`, etc.
 
 ### Manual Slug Generation
 
@@ -530,6 +561,277 @@ class Product extends Model
 $product = Product::create(['name' => 'مقالات تقنية']);
 // Slug in 'url_slug' column: "مقالات_تقنية"
 ```
+
+### Example 4: Model with Translated Field (Comprehensive Support)
+
+The package provides **comprehensive support** for translated fields, automatically detecting and working with multiple translation packages and patterns.
+
+#### Basic Setup
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Shammaa\LaravelSlug\Traits\HasSlug;
+
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    // Configure for translated field
+    protected $slugSourceField = 'name';              // Field name (used as translation key)
+    protected $slugSourceIsTranslated = true;        // Enable translated field support
+    protected $slugSourceTranslationKey = 'name';    // Translation key (optional, defaults to source field)
+    // Locale is automatic - uses app()->getLocale() - no need to set it!
+    protected $regenerateSlugOnUpdate = true;
+
+    protected $fillable = ['slug'];
+    // Note: 'name' is stored in translations table, not in taxonomies table
+}
+```
+
+#### Usage Examples for Different Translation Packages
+
+**1. Laravel Translations Package (lexi_translations / translations table):**
+
+```php
+$taxonomy = new Taxonomy();
+$taxonomy->setTranslation('name', 'ar', 'مقالات تقنية');
+$taxonomy->save();
+// Slug: "مقالات-تقنية"
+```
+
+**2. Spatie Laravel Translatable:**
+
+```php
+$taxonomy = new Taxonomy();
+$taxonomy->setTranslation('name', 'ar', 'مقالات تقنية');
+$taxonomy->save();
+// Slug: "مقالات-تقنية"
+```
+
+**3. Astrotomic Laravel Translatable:**
+
+```php
+$taxonomy = new Taxonomy();
+$taxonomy->translate('ar')->name = 'مقالات تقنية';
+$taxonomy->save();
+// Slug: "مقالات-تقنية"
+```
+
+**4. Custom Translation Implementation:**
+
+```php
+$taxonomy = new Taxonomy();
+// Works with any package that uses translate(), trans(), or getTranslation() methods
+$taxonomy->translate('ar')->name = 'مقالات تقنية';
+$taxonomy->save();
+// Slug: "مقالات-تقنية"
+```
+
+#### How It Works (Priority Order)
+
+The package tries multiple methods to get the translation value, in this order:
+
+1. **Pending Translations** (before save) - Checks for translations set but not yet saved
+2. **Translation Methods** - `translate()`, `trans()`, `getTranslation()`
+3. **Translations Relationship** - Eager loads and checks `translations` relationship
+4. **Getter Methods** - `getNameAttribute()` accessor
+5. **Magic Properties** - Direct property access `$model->name`
+6. **Translation Tables** - Direct database queries to `translations`, `lexi_translations`, etc.
+7. **getTranslations() Method** - For packages with this method
+8. **Attributes** - Fallback to model attributes
+
+#### Supported Translation Packages
+
+✅ **Laravel Translations** (lexi_translations, translations table)  
+✅ **Spatie Laravel Translatable**  
+✅ **Astrotomic Laravel Translatable**  
+✅ **Custom implementations** with `translate()`, `trans()`, or `getTranslation()` methods  
+✅ **Any package** with `translations` relationship  
+✅ **Key-value translation tables** (lexi_translations, translations, model_translations)  
+✅ **Column-based translation tables** (laravel-translations style)
+
+#### How Locale Works (Automatic)
+
+The package **automatically uses `app()->getLocale()`** - no configuration needed!
+
+```php
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSourceIsTranslated = true;
+    // No slugSourceTranslationLocale needed - uses app()->getLocale() automatically!
+}
+
+// Example usage:
+app()->setLocale('ar');
+$taxonomy->save();  // Slug generated from Arabic translation ✅
+
+app()->setLocale('en');
+$taxonomy->save();  // Slug generated from English translation ✅
+
+// The slug automatically adapts to the current site language!
+```
+
+**Key Benefits:**
+- ✅ **No fixed locale** - Always matches current site language
+- ✅ **Multi-language ready** - Works with any locale
+- ✅ **Automatic** - No manual configuration needed
+- ✅ **Flexible** - Changes when site language changes
+
+#### Advanced: Slug Per Locale (Multiple Languages)
+
+The package supports generating **separate slugs for each language**, perfect for multilingual sites.
+
+**Option 1: Separate Columns (slug_ar, slug_en, etc.)**
+
+```php
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSourceIsTranslated = true;
+    protected $slugPerLocale = true;              // Enable per-locale slugs
+    protected $slugColumnPerLocale = true;        // Use separate columns
+}
+
+// Usage
+$taxonomy = new Taxonomy();
+$taxonomy->setTranslation('name', 'ar', 'مقالات تقنية');
+$taxonomy->setTranslation('name', 'en', 'Technical Articles');
+$taxonomy->save();
+
+// Results:
+// $taxonomy->slug_ar = "مقالات-تقنية"
+// $taxonomy->slug_en = "technical-articles"
+```
+
+**Option 2: Single Column with Current Locale**
+
+```php
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSourceIsTranslated = true;
+    protected $slugPerLocale = false;             // Single slug (default)
+    protected $slugColumnPerLocale = false;       // Use single column
+    // No slugPrimaryLocale needed - uses app()->getLocale() automatically!
+}
+
+// Slug will be generated from current site language (app()->getLocale())
+// When locale changes, slug changes automatically
+// Example:
+// app()->setLocale('ar'); $taxonomy->save(); // Slug from Arabic
+// app()->setLocale('en'); $taxonomy->save(); // Slug from English
+```
+
+**Option 3: Global Configuration**
+
+```php
+// config/slug.php
+return [
+    'per_locale' => true,              // Enable per-locale slugs globally
+    'column_per_locale' => true,       // Use separate columns
+    'primary_locale' => 'ar',          // Primary locale (if column_per_locale = false)
+];
+```
+
+**Available Locales Detection:**
+
+The package automatically detects available locales from:
+1. Model's `getAvailableLocales()` method
+2. Model's `$translatableLocales` property
+3. `config('app.available_locales')`
+4. App locale + fallback locale
+
+**Custom Available Locales:**
+
+```php
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSourceIsTranslated = true;
+    protected $slugPerLocale = true;
+    protected $translatableLocales = ['ar', 'en', 'fr'];  // Custom locales
+}
+
+// Or implement method:
+public function getAvailableLocales(): array
+{
+    return ['ar', 'en', 'fr'];
+}
+```
+
+**Complete Example: Multilingual Taxonomy**
+
+```php
+class Taxonomy extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSourceIsTranslated = true;
+    protected $slugPerLocale = true;
+    protected $slugColumnPerLocale = true;  // Use slug_ar, slug_en, etc.
+    protected $translatableLocales = ['ar', 'en', 'fr'];
+}
+
+// Usage
+$taxonomy = new Taxonomy();
+$taxonomy->setTranslation('name', 'ar', 'مقالات تقنية');
+$taxonomy->setTranslation('name', 'en', 'Technical Articles');
+$taxonomy->setTranslation('name', 'fr', 'Articles Techniques');
+$taxonomy->save();
+
+// Results:
+// $taxonomy->slug_ar = "مقالات-تقنية"
+// $taxonomy->slug_en = "technical-articles"
+// $taxonomy->slug_fr = "articles-techniques"
+
+// Access slug for current locale
+$currentSlug = $taxonomy->{app()->getLocale() === 'ar' ? 'slug_ar' : 'slug_en'};
+
+// Or create a helper method:
+public function getSlugForLocale(?string $locale = null): ?string
+{
+    $locale = $locale ?: app()->getLocale();
+    $column = "slug_{$locale}";
+    return $this->getAttribute($column);
+}
+```
+
+**When to Use Each Option:**
+
+- **`slugPerLocale = false`** (default): Single slug from current/primary locale
+  - Use when: You want one URL structure, language is handled via routes/prefixes
+  - Example: `/ar/category-slug` or `/en/category-slug` (same slug, different prefix)
+
+- **`slugPerLocale = true` + `slugColumnPerLocale = true`**: Separate columns
+  - Use when: Each language needs its own unique slug
+  - Example: `/ar/مقالات-تقنية` vs `/en/technical-articles` (different slugs)
+
+- **`slugPerLocale = true` + `slugColumnPerLocale = false`**: Primary locale in main column
+  - Use when: You want slugs for all locales but main slug from primary locale
+  - Example: Main `slug` column has Arabic slug, other locales stored in translations
+
+#### Important Notes
+
+- ✅ Works **before save()** - Detects pending translations set via `setTranslation()` or similar methods
+- ✅ Works **after save()** - Retrieves translations from database
+- ✅ **Automatic detection** - No need to configure package-specific settings
+- ✅ **Multiple table structures** - Supports key-value and column-based translation tables
+- ✅ **Fallback support** - If translation not found, slug generation is skipped gracefully
+- ✅ **Performance optimized** - Uses eager loading and caching when possible
 
 ## Requirements
 
