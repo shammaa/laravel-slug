@@ -129,6 +129,9 @@ class SlugService
         $quotes = ['"', "'", '`', '«', '»', '„', '‚', '‹', '›'];
         $string = str_replace($quotes, '', $string);
 
+        // Remove Arabic diacritics (including shadda) - Fix for Arabic text with diacritics
+        $string = $this->removeArabicDiacritics($string);
+
         // Preserve original language or transliterate
         if ($this->preserveOriginal) {
             // Keep original language characters - only convert Arabic numbers
@@ -182,6 +185,78 @@ class SlugService
         }
 
         return $string;
+    }
+
+    /**
+     * Remove Arabic diacritics (including shadda) from text
+     * This fixes issues with Arabic text containing diacritics like شدة (ّ)
+     */
+    protected function removeArabicDiacritics(string $text): string
+    {
+        // Arabic diacritics Unicode ranges
+        // U+064B to U+065F: Arabic diacritics
+        // U+0670: Arabic letter superscript alef
+        // U+06D6 to U+06ED: Additional Arabic diacritics
+        $arabicDiacritics = [
+            // Common diacritics
+            "\u{064B}", // Tanwin Fath (ً)
+            "\u{064C}", // Tanwin Damm (ٌ)
+            "\u{064D}", // Tanwin Kasr (ٍ)
+            "\u{064E}", // Fatha (َ)
+            "\u{064F}", // Damma (ُ)
+            "\u{0650}", // Kasra (ِ)
+            "\u{0651}", // Shadda (ّ) - THE PROBLEM!
+            "\u{0652}", // Sukun (ْ)
+            "\u{0653}", // Maddah (ٓ)
+            "\u{0654}", // Hamza Above (ٔ)
+            "\u{0655}", // Hamza Below (ٕ)
+            "\u{0656}", // Subscript Alef (ٖ)
+            "\u{0657}", // Inverted Damma (ٗ)
+            "\u{0658}", // Mark Noon Ghunna (٘)
+            "\u{0659}", // Zwarakay (ٙ)
+            "\u{065A}", // Vowel Sign Small V Above (ٚ)
+            "\u{065B}", // Vowel Sign Inverted Small V Above (ٛ)
+            "\u{065C}", // Vowel Sign Dot Below (ٜ)
+            "\u{065D}", // Reversed Damma (ٝ)
+            "\u{065E}", // Fatha With Two Dots (ٞ)
+            "\u{065F}", // Wavy Hamza Below (ٟ)
+            "\u{0670}", // Arabic Letter Superscript Alef
+            "\u{06D6}", // Arabic Small High Ligature Sad With Lam With Alef Maksura
+            "\u{06D7}", // Arabic Small High Ligature Qaf With Lam With Alef Maksura
+            "\u{06D8}", // Arabic Small High Meem Initial Form
+            "\u{06D9}", // Arabic Small High Lam Alef
+            "\u{06DA}", // Arabic Small High Jeem
+            "\u{06DB}", // Arabic Small High Three Dots
+            "\u{06DC}", // Arabic Small High Seen
+            "\u{06DD}", // Arabic End Of Ayah
+            "\u{06DE}", // Arabic Start Of Rub El Hizb
+            "\u{06DF}", // Arabic Small High Rounded Zero
+            "\u{06E0}", // Arabic Small High Upright Rectangular Zero
+            "\u{06E1}", // Arabic Small High Dotless Head Of Khah
+            "\u{06E2}", // Arabic Small High Meem Isolated Form
+            "\u{06E3}", // Arabic Small Low Seen
+            "\u{06E4}", // Arabic Small High Madda
+            "\u{06E5}", // Arabic Small Waw
+            "\u{06E6}", // Arabic Small Yeh
+            "\u{06E7}", // Arabic Small High Yeh
+            "\u{06E8}", // Arabic Small High Noon
+            "\u{06E9}", // Arabic Placeholder Mark
+            "\u{06EA}", // Arabic Empty Centre Low Stop
+            "\u{06EB}", // Arabic Empty Centre High Stop
+            "\u{06EC}", // Arabic Rounded High Stop With Filled Centre
+            "\u{06ED}", // Arabic Small Low Meem
+        ];
+
+        // Remove all Arabic diacritics
+        foreach ($arabicDiacritics as $diacritic) {
+            $text = str_replace($diacritic, '', $text);
+        }
+
+        // Also use regex to remove any remaining combining diacritical marks (more comprehensive)
+        // This catches any diacritics we might have missed
+        $text = preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{06D6}-\x{06ED}]/u', '', $text);
+
+        return $text;
     }
 
     /**
