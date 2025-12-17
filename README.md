@@ -13,6 +13,13 @@ A simple, professional slug generator for Laravel. Takes text → generates slug
 - ✅ **Unique Slugs** - Automatically ensures uniqueness in database
 - ✅ **Auto-regeneration** - Regenerates when source field changes
 - ✅ **Clean Text** - Removes HTML, punctuation, special characters
+- ✅ **Find by Slug** - `findBySlug()` method for easy model retrieval
+- ✅ **Skip Generation** - Conditionally skip slug generation with `skipSlugGenerationWhen()`
+- ✅ **Prevent Overwrite** - Protect existing slugs from being overwritten
+- ✅ **Extra Scopes** - Multi-tenant support with custom uniqueness scopes
+- ✅ **Custom Suffix** - Start suffix from custom number or use custom generator
+- ✅ **Multiple Fields** - Generate slug from multiple source fields
+- ✅ **Callable Source** - Generate slug from custom function/callable
 
 ## Installation
 
@@ -102,7 +109,9 @@ return [
 
 ### Model-Level Configuration
 
-Each model can define its own slug settings:
+You can configure slug settings in two ways:
+
+#### Method 1: Using Properties (Simple)
 
 ```php
 class Article extends Model
@@ -120,6 +129,56 @@ class Article extends Model
 
     // Slug column name (default: 'slug')
     protected $slugColumn = 'slug';
+}
+```
+
+#### Method 2: Using SlugOptions (Recommended - More Professional)
+
+```php
+use Shammaa\LaravelSlug\SlugOptions;
+
+class Article extends Model
+{
+    use HasSlug;
+
+    /**
+     * Get the options for generating the slug.
+     */
+    public function getSlugOptions(): SlugOptions
+    {
+        return SlugOptions::create()
+            ->generateSlugsFrom('title')
+            ->saveSlugsTo('slug');
+    }
+}
+```
+
+**Benefits of SlugOptions:**
+- ✅ **Fluent Interface** - Clean, readable code
+- ✅ **Type Safety** - Better IDE autocomplete
+- ✅ **All Features** - Access to all advanced features
+- ✅ **Professional** - Industry-standard pattern (like Spatie)
+
+**Full Example with All Options:**
+
+```php
+public function getSlugOptions(): SlugOptions
+{
+    return SlugOptions::create()
+        ->generateSlugsFrom('title')                    // Source field
+        ->saveSlugsTo('slug')                          // Column name
+        ->separator('-')                               // Separator
+        ->regenerateOnUpdate(true)                     // Regenerate on update
+        ->doNotGenerateSlugsOnCreate()                 // Skip on create
+        ->doNotGenerateSlugsOnUpdate()                // Skip on update
+        ->skipGenerateWhen(fn($m) => $m->status === 'draft')  // Conditional skip
+        ->preventOverwrite()                           // Don't overwrite existing
+        ->extraScope(fn($q) => $q->where('site_id', $this->site_id))  // Multi-tenant
+        ->startSlugSuffixFrom(2)                       // Start suffix from 2
+        ->useSuffixOnFirstOccurrence()                 // Always add suffix
+        ->usingSuffixGenerator(fn($slug, $iter) => bin2hex(random_bytes(4)))  // Custom suffix
+        ->sourceIsTranslated(true)                     // Translated field
+        ->sourceTranslationKey('name');               // Translation key
 }
 ```
 
@@ -309,6 +368,181 @@ $slug = Slug::generateUnique(
 $category = Category::find(1);
 $category->regenerateSlug();
 $category->save();
+```
+
+### Find Model by Slug
+
+```php
+// Find a model by its slug
+$category = Category::findBySlug('مقالات-تقنية');
+
+// With specific columns
+$category = Category::findBySlug('مقالات-تقنية', ['id', 'name', 'slug']);
+```
+
+### Skip Slug Generation Conditionally
+
+```php
+class Article extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'title';
+    
+    protected function bootHasSlug(): void
+    {
+        parent::bootHasSlug();
+        
+        // Skip slug generation when status is 'draft'
+        $this->skipSlugGenerationWhen(function ($model) {
+            return $model->status === 'draft';
+        });
+    }
+}
+
+// Or set it dynamically
+$article = new Article();
+$article->title = 'My Article';
+$article->status = 'draft';
+$article->skipSlugGenerationWhen(fn($m) => $m->status === 'draft');
+$article->save(); // No slug generated
+```
+
+### Prevent Slug Overwrite
+
+```php
+class Article extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'title';
+    protected $preventSlugOverwrite = true;  // Prevent overwriting existing slug
+}
+
+$article = Article::create(['title' => 'My Article']); // slug: "my-article"
+$article->title = 'Changed Title';
+$article->save(); // slug stays "my-article" (not overwritten)
+```
+
+### Extra Scope for Uniqueness (Multi-tenant Support)
+
+```php
+class Page extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'title';
+    
+    protected function bootHasSlug(): void
+    {
+        parent::bootHasSlug();
+        
+        // Ensure slug is unique per website
+        $this->setSlugExtraScope(function ($query) {
+            $query->where('website_id', $this->website_id);
+        });
+    }
+}
+
+// Now slugs are unique per website, not globally
+$page1 = Page::create(['title' => 'Home', 'website_id' => 1]); // slug: "home"
+$page2 = Page::create(['title' => 'Home', 'website_id' => 2]); // slug: "home" (different website)
+```
+
+### Custom Suffix Starting Number
+
+```php
+class Category extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $slugSuffixStartFrom = 2;  // Start suffix from 2 instead of 1
+}
+
+Category::create(['name' => 'مقالات']); // slug: "مقالات"
+Category::create(['name' => 'مقالات']); // slug: "مقالات-2" (not "مقالات-1")
+Category::create(['name' => 'مقالات']); // slug: "مقالات-3"
+```
+
+### Use Suffix on First Occurrence
+
+```php
+class Category extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    protected $useSuffixOnFirstOccurrence = true;  // Always add suffix
+}
+
+Category::create(['name' => 'مقالات']); // slug: "مقالات-1" (suffix added even if unique)
+Category::create(['name' => 'مقالات']); // slug: "مقالات-2"
+```
+
+### Custom Suffix Generator
+
+```php
+class Category extends Model
+{
+    use HasSlug;
+
+    protected $slugSourceField = 'name';
+    
+    protected function bootHasSlug(): void
+    {
+        parent::bootHasSlug();
+        
+        // Generate random suffix instead of incremental numbers
+        $this->setSlugSuffixGenerator(function ($baseSlug, $iteration) {
+            return bin2hex(random_bytes(4)); // Random 8-character hex
+        });
+    }
+}
+
+Category::create(['name' => 'مقالات']); // slug: "مقالات"
+Category::create(['name' => 'مقالات']); // slug: "مقالات-a3f2b1c4" (random)
+Category::create(['name' => 'مقالات']); // slug: "مقالات-d5e6f7a8" (random)
+```
+
+### Multiple Fields for Slug Generation
+
+```php
+class Article extends Model
+{
+    use HasSlug;
+
+    // Generate slug from multiple fields
+    protected $slugSourceField = ['title', 'author_name'];
+}
+
+$article = Article::create([
+    'title' => 'My Article',
+    'author_name' => 'John Doe'
+]);
+// Slug: "my-article-john-doe"
+```
+
+### Callable for Slug Generation
+
+```php
+class Article extends Model
+{
+    use HasSlug;
+
+    // Generate slug from a custom function
+    protected $slugSourceField = function ($model) {
+        return $model->title . ' ' . $model->id;
+    };
+}
+
+// Or set it dynamically
+$article = new Article();
+$article->slugSourceField = function ($model) {
+    return strtolower($model->title) . '-' . date('Y');
+};
+$article->title = 'My Article';
+$article->save(); // slug: "my-article-2025"
 ```
 
 ## Key Features Explained

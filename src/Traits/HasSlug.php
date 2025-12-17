@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Shammaa\LaravelSlug\Traits;
 
 use Shammaa\LaravelSlug\Services\SlugService;
+use Shammaa\LaravelSlug\SlugOptions;
 
 trait HasSlug
 {
@@ -17,10 +18,22 @@ trait HasSlug
     protected static function bootHasSlug(): void
     {
         static::creating(function ($model) {
-            $model->generateSlug();
+            // Check if using SlugOptions and doNotGenerateSlugsOnCreate is set
+            $options = $model->getSlugOptions();
+            if ($options && $options->getDoNotGenerateSlugsOnCreate()) {
+                return;
+            }
+
+            if (!$model->shouldSkipSlugGeneration()) {
+                $model->generateSlug();
+            }
         });
 
         static::updating(function ($model) {
+            if ($model->shouldSkipSlugGeneration()) {
+                return;
+            }
+            
             if ($model->getRegenerateSlugOnUpdate()) {
                 $sourceField = $model->getSlugSourceField();
                 
@@ -28,8 +41,23 @@ trait HasSlug
                 if ($model->getSlugSourceIsTranslated()) {
                     // Always regenerate for translated fields (hard to detect changes)
                     $model->generateSlug();
-                } elseif ($model->isDirty($sourceField)) {
+                } elseif (is_string($sourceField) && $model->isDirty($sourceField)) {
                     // For normal fields, check if field is dirty
+                    $model->generateSlug();
+                } elseif (is_array($sourceField)) {
+                    // For multiple fields, check if any field is dirty
+                    $isDirty = false;
+                    foreach ($sourceField as $field) {
+                        if ($model->isDirty($field)) {
+                            $isDirty = true;
+                            break;
+                        }
+                    }
+                    if ($isDirty) {
+                        $model->generateSlug();
+                    }
+                } elseif (is_callable($sourceField)) {
+                    // For callable, always regenerate (can't detect changes)
                     $model->generateSlug();
                 }
             }
@@ -56,26 +84,61 @@ trait HasSlug
         // Get table name
         $table = $this->getTable();
         
+        // Check if slug already exists and prevent overwrite is enabled
+        $slugColumn = $this->getSlugColumn();
+        if ($this->getPreventOverwrite() && $this->exists && $this->getAttribute($slugColumn)) {
+            return; // Don't overwrite existing slug
+        }
+        
+        // Get extra scope callback
+        $extraScope = $this->getSlugExtraScope();
+        
         // Generate unique slug
         $slug = $slugService->generateUnique(
             $sourceValue,
             $table,
-            $this->getSlugColumn(),
+            $slugColumn,
             $this->getSlugSeparator(),
-            $excludeId
+            $excludeId,
+            $extraScope,
+            $this->getSlugSuffixStartFrom(),
+            $this->getUseSuffixOnFirstOccurrence(),
+            $this->getSlugSuffixGenerator()
         );
 
-        $this->setAttribute($this->getSlugColumn(), $slug);
+        $this->setAttribute($slugColumn, $slug);
     }
 
 
     /**
-     * Get slug source value (supports translated fields)
+     * Get slug source value (supports translated fields, multiple fields, and callable)
      */
     protected function getSlugSourceValue(): ?string
     {
         $sourceField = $this->getSlugSourceField();
 
+        // Check if source is a callable
+        if (is_callable($sourceField)) {
+            return call_user_func($sourceField, $this);
+        }
+
+        // Check if source is multiple fields (array)
+        if (is_array($sourceField)) {
+            $values = [];
+            foreach ($sourceField as $field) {
+                if ($this->getSlugSourceIsTranslated()) {
+                    $value = $this->getTranslatedSlugSourceValue($field);
+                } else {
+                    $value = $this->getAttribute($field);
+                }
+                if (!empty($value)) {
+                    $values[] = $value;
+                }
+            }
+            return !empty($values) ? implode(' ', $values) : null;
+        }
+
+        // Single field (string)
         // Check if source field is translated
         if ($this->getSlugSourceIsTranslated()) {
             return $this->getTranslatedSlugSourceValue($sourceField);
@@ -505,6 +568,13 @@ trait HasSlug
      */
     public function getSlugSourceIsTranslated(): bool
     {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getSourceIsTranslated();
+        }
+
+        // Fallback to properties
         return property_exists($this, 'slugSourceIsTranslated') && isset($this->slugSourceIsTranslated)
             ? $this->slugSourceIsTranslated
             : false;
@@ -524,6 +594,13 @@ trait HasSlug
      */
     public function getSlugSourceTranslationKey(): ?string
     {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options && $options->getSourceTranslationKey() !== null) {
+            return $options->getSourceTranslationKey();
+        }
+
+        // Fallback to properties
         return property_exists($this, 'slugSourceTranslationKey') && isset($this->slugSourceTranslationKey)
             ? $this->slugSourceTranslationKey
             : null;
@@ -565,13 +642,32 @@ trait HasSlug
 
 
     /**
-     * Get slug source field
+     * Get slug source field (supports string, array, or callable)
      */
-    public function getSlugSourceField(): string
+    public function getSlugSourceField(): string|array|callable
     {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options && $options->getGenerateSlugsFrom() !== null) {
+            return $options->getGenerateSlugsFrom();
+        }
+
+        // Fallback to properties
         return property_exists($this, 'slugSourceField') && isset($this->slugSourceField)
             ? $this->slugSourceField
             : config('slug.default_source_field', 'name');
+    }
+
+    /**
+     * Get slug options (if using SlugOptions pattern)
+     */
+    public function getSlugOptions(): ?SlugOptions
+    {
+        if (method_exists($this, 'slugOptions')) {
+            return $this->slugOptions();
+        }
+
+        return null;
     }
 
     /**
@@ -588,6 +684,17 @@ trait HasSlug
      */
     public function getRegenerateSlugOnUpdate(): bool
     {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            // If doNotGenerateSlugsOnUpdate is true, return false
+            if ($options->getDoNotGenerateSlugsOnUpdate()) {
+                return false;
+            }
+            return $options->getRegenerateOnUpdate();
+        }
+
+        // Fallback to properties
         return property_exists($this, 'regenerateSlugOnUpdate') && isset($this->regenerateSlugOnUpdate)
             ? $this->regenerateSlugOnUpdate
             : config('slug.regenerate_on_update', true);
@@ -607,6 +714,13 @@ trait HasSlug
      */
     public function getSlugSeparator(): string
     {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getSeparator();
+        }
+
+        // Fallback to properties
         return property_exists($this, 'slugSeparator') && isset($this->slugSeparator)
             ? $this->slugSeparator
             : config('slug.default_separator', '-');
@@ -626,6 +740,13 @@ trait HasSlug
      */
     public function getSlugColumn(): string
     {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getSaveSlugsTo();
+        }
+
+        // Fallback to properties
         return property_exists($this, 'slugColumn') && isset($this->slugColumn)
             ? $this->slugColumn
             : config('slug.default_column', 'slug');
@@ -646,6 +767,193 @@ trait HasSlug
     public function regenerateSlug(): self
     {
         $this->generateSlug();
+        return $this;
+    }
+
+    /**
+     * Find model by slug
+     * 
+     * @param string $slug
+     * @param array|string $columns
+     * @return static|null
+     */
+    public static function findBySlug(string $slug, array|string $columns = ['*']): ?static
+    {
+        $instance = new static();
+        $slugColumn = $instance->getSlugColumn();
+        
+        return static::where($slugColumn, $slug)->first($columns);
+    }
+
+    /**
+     * Check if slug generation should be skipped
+     */
+    protected function shouldSkipSlugGeneration(): bool
+    {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options && $options->getSkipGenerateWhen()) {
+            $skipCallback = $options->getSkipGenerateWhen();
+            if (is_callable($skipCallback)) {
+                return call_user_func($skipCallback, $this);
+            }
+        }
+
+        // Fallback to properties
+        $skipCallback = $this->getSkipSlugGenerationCallback();
+        if ($skipCallback && is_callable($skipCallback)) {
+            return call_user_func($skipCallback, $this);
+        }
+        
+        return false;
+    }
+
+    /**
+     * Get skip slug generation callback
+     */
+    protected function getSkipSlugGenerationCallback(): ?callable
+    {
+        return property_exists($this, 'skipSlugGenerationWhen') && isset($this->skipSlugGenerationWhen)
+            ? $this->skipSlugGenerationWhen
+            : null;
+    }
+
+    /**
+     * Set skip slug generation callback
+     */
+    public function skipSlugGenerationWhen(callable $callback): self
+    {
+        $this->skipSlugGenerationWhen = $callback;
+        return $this;
+    }
+
+    /**
+     * Get prevent overwrite setting
+     */
+    protected function getPreventOverwrite(): bool
+    {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getPreventOverwrite();
+        }
+
+        // Fallback to properties
+        return property_exists($this, 'preventSlugOverwrite') && isset($this->preventSlugOverwrite)
+            ? $this->preventSlugOverwrite
+            : false;
+    }
+
+    /**
+     * Set prevent overwrite
+     */
+    public function preventSlugOverwrite(bool $prevent = true): self
+    {
+        $this->preventSlugOverwrite = $prevent;
+        return $this;
+    }
+
+    /**
+     * Get extra scope callback for uniqueness check
+     */
+    protected function getSlugExtraScope(): ?callable
+    {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options && $options->getExtraScope()) {
+            return $options->getExtraScope();
+        }
+
+        // Fallback to properties
+        return property_exists($this, 'slugExtraScope') && isset($this->slugExtraScope)
+            ? $this->slugExtraScope
+            : null;
+    }
+
+    /**
+     * Set extra scope for uniqueness check
+     */
+    public function setSlugExtraScope(callable $callback): self
+    {
+        $this->slugExtraScope = $callback;
+        return $this;
+    }
+
+    /**
+     * Get slug suffix start from number
+     */
+    protected function getSlugSuffixStartFrom(): int
+    {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getSuffixStartFrom();
+        }
+
+        // Fallback to properties
+        return property_exists($this, 'slugSuffixStartFrom') && isset($this->slugSuffixStartFrom)
+            ? $this->slugSuffixStartFrom
+            : 1;
+    }
+
+    /**
+     * Set slug suffix start from number
+     */
+    public function setSlugSuffixStartFrom(int $startFrom): self
+    {
+        $this->slugSuffixStartFrom = $startFrom;
+        return $this;
+    }
+
+    /**
+     * Get use suffix on first occurrence setting
+     */
+    protected function getUseSuffixOnFirstOccurrence(): bool
+    {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getUseSuffixOnFirstOccurrence();
+        }
+
+        // Fallback to properties
+        return property_exists($this, 'useSuffixOnFirstOccurrence') && isset($this->useSuffixOnFirstOccurrence)
+            ? $this->useSuffixOnFirstOccurrence
+            : false;
+    }
+
+    /**
+     * Set use suffix on first occurrence
+     */
+    public function setUseSuffixOnFirstOccurrence(bool $use = true): self
+    {
+        $this->useSuffixOnFirstOccurrence = $use;
+        return $this;
+    }
+
+    /**
+     * Get slug suffix generator callback
+     */
+    protected function getSlugSuffixGenerator(): ?callable
+    {
+        // Check if using SlugOptions
+        $options = $this->getSlugOptions();
+        if ($options && $options->getSuffixGenerator()) {
+            return $options->getSuffixGenerator();
+        }
+
+        // Fallback to properties
+        return property_exists($this, 'slugSuffixGenerator') && isset($this->slugSuffixGenerator)
+            ? $this->slugSuffixGenerator
+            : null;
+    }
+
+    /**
+     * Set slug suffix generator callback
+     */
+    public function setSlugSuffixGenerator(callable $callback): self
+    {
+        $this->slugSuffixGenerator = $callback;
         return $this;
     }
 }

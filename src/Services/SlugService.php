@@ -288,29 +288,70 @@ class SlugService
         string $table,
         string $column = 'slug',
         string $separator = '-',
-        ?int $excludeId = null
+        ?int $excludeId = null,
+        ?callable $extraScope = null,
+        int $suffixStartFrom = 1,
+        bool $useSuffixOnFirstOccurrence = false,
+        ?callable $suffixGenerator = null
     ): string {
         $baseSlug = $this->generate($string, $separator);
         $slug = $baseSlug;
-        $counter = 1;
+        $counter = $suffixStartFrom;
+        $iteration = 0;
 
-        while ($this->slugExists($table, $column, $slug, $excludeId)) {
-            $slug = $baseSlug . $separator . $counter;
+        // If useSuffixOnFirstOccurrence is true, always add suffix even if slug is unique
+        if ($useSuffixOnFirstOccurrence) {
+            $slug = $this->generateSuffix($baseSlug, $counter, $separator, $suffixGenerator, $iteration);
             $counter++;
+            $iteration++;
+        }
+
+        while ($this->slugExists($table, $column, $slug, $excludeId, $extraScope)) {
+            $slug = $this->generateSuffix($baseSlug, $counter, $separator, $suffixGenerator, $iteration);
+            $counter++;
+            $iteration++;
         }
 
         return $slug;
     }
 
     /**
+     * Generate slug with suffix
+     */
+    protected function generateSuffix(
+        string $baseSlug,
+        int $counter,
+        string $separator,
+        ?callable $suffixGenerator,
+        int $iteration
+    ): string {
+        if ($suffixGenerator && is_callable($suffixGenerator)) {
+            $suffix = call_user_func($suffixGenerator, $baseSlug, $iteration);
+            return $baseSlug . $separator . $suffix;
+        }
+
+        return $baseSlug . $separator . $counter;
+    }
+
+    /**
      * Check if slug exists in database
      */
-    protected function slugExists(string $table, string $column, string $slug, ?int $excludeId = null): bool
-    {
+    protected function slugExists(
+        string $table,
+        string $column,
+        string $slug,
+        ?int $excludeId = null,
+        ?callable $extraScope = null
+    ): bool {
         $query = DB::table($table)->where($column, $slug);
 
         if ($excludeId !== null) {
             $query->where('id', '!=', $excludeId);
+        }
+
+        // Apply extra scope if provided
+        if ($extraScope && is_callable($extraScope)) {
+            $extraScope($query);
         }
 
         return $query->exists();
