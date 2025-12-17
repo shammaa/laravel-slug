@@ -13,7 +13,7 @@ A simple, professional slug generator for Laravel. Takes text → generates slug
 - ✅ **Unique Slugs** - Automatically ensures uniqueness in database
 - ✅ **Auto-regeneration** - Regenerates when source field changes
 - ✅ **Clean Text** - Removes HTML, punctuation, special characters
-- ✅ **Find by Slug** - `findBySlug()` method for easy model retrieval
+- ✅ **Find by Slug** - `findWhereSlug()` method for easy model retrieval (avoids conflicts)
 - ✅ **Skip Generation** - Conditionally skip slug generation with `skipSlugGenerationWhen()`
 - ✅ **Prevent Overwrite** - Protect existing slugs from being overwritten
 - ✅ **Extra Scopes** - Multi-tenant support with custom uniqueness scopes
@@ -373,11 +373,22 @@ $category->save();
 ### Find Model by Slug
 
 ```php
-// Find a model by its slug
-$category = Category::findBySlug('مقالات-تقنية');
+// Find a model by its slug (avoids conflicts with other packages)
+$category = Category::findWhereSlug('مقالات-تقنية');
 
 // With specific columns
-$category = Category::findBySlug('مقالات-تقنية', ['id', 'name', 'slug']);
+$category = Category::findWhereSlug('مقالات-تقنية', ['id', 'name', 'slug']);
+```
+
+**Note:** We use `findWhereSlug()` instead of `findBySlug()` to avoid conflicts with other packages (e.g., `Aliziodev\LaravelTaxonomy`) that define `findBySlug()` with different signatures.
+
+If your model doesn't have conflicts and you prefer `findBySlug()`, you can add this method to your model:
+
+```php
+public static function findBySlug(string $slug, array|string $columns = ['*']): ?static
+{
+    return static::findWhereSlug($slug, $columns);
+}
 ```
 
 ### Skip Slug Generation Conditionally

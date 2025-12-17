@@ -771,13 +771,25 @@ trait HasSlug
     }
 
     /**
-     * Find model by slug
+     * Find model by slug (alternative method name to avoid conflicts)
+     * 
+     * IMPORTANT: We use findWhereSlug() instead of findBySlug() to avoid conflicts
+     * with other packages that define findBySlug() with different signatures
+     * (e.g., Aliziodev\LaravelTaxonomy).
+     * 
+     * If you need findBySlug() and your model doesn't have conflicts, you can
+     * add this method to your model:
+     * 
+     * public static function findBySlug(string $slug, array|string $columns = ['*']): ?static
+     * {
+     *     return static::findWhereSlug($slug, $columns);
+     * }
      * 
      * @param string $slug
      * @param array|string $columns
      * @return static|null
      */
-    public static function findBySlug(string $slug, array|string $columns = ['*']): ?static
+    public static function findWhereSlug(string $slug, array|string $columns = ['*']): ?static
     {
         $instance = new static();
         $slugColumn = $instance->getSlugColumn();
