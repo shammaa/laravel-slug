@@ -197,7 +197,7 @@ trait HasSlug
         $locale = $locale ?: app()->getLocale();
 
         // Priority 1: Check pending translations (before save) - Most important for new models
-        $pendingValue = $this->getPendingTranslation($translationKey, $locale);
+        $pendingValue = $this->getSlugPendingTranslation($translationKey, $locale);
         if ($pendingValue !== null) {
             return $pendingValue;
         }
@@ -391,9 +391,10 @@ trait HasSlug
 
     /**
      * Get pending translation (before save) - supports multiple translation packages
-     * Comprehensive support for all translation patterns
+     * Comprehensive support for all translation patterns.
+     * Renamed to getSlugPendingTranslation to avoid collision with other translation traits.
      */
-    protected function getPendingTranslation(string $key, string $locale): ?string
+    protected function getSlugPendingTranslation(string $key, string $locale): ?string
     {
         // Method 1: Check if model has pendingTranslations property (custom implementations)
         if (property_exists($this, 'pendingTranslations') && isset($this->pendingTranslations)) {
@@ -407,7 +408,8 @@ trait HasSlug
             }
         }
 
-        // Method 2: Check if model has getPendingTranslation method
+        // Method 2: Check if model has getPendingTranslation method (from other traits like HasTranslations)
+        // This acts as a bridge to other translation packages if they are present.
         if (method_exists($this, 'getPendingTranslation')) {
             try {
                 $value = $this->getPendingTranslation($key, $locale);
