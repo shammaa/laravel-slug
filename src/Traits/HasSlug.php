@@ -78,20 +78,46 @@ trait HasSlug
 
         $slugService = app(SlugService::class);
         
+        $isSlugTranslated = $this->getSlugIsTranslated();
+        $slugColumn = $this->getSlugColumn();
+
         // Check if we're updating an existing model
         $excludeId = $this->exists ? $this->getKey() : null;
         
-        // Get table name
-        $table = $this->getTable();
+        // Get table name (main table or translations table)
+        $table = $isSlugTranslated ? $this->getSlugTranslationTable() : $this->getTable();
         
-        // Check if slug already exists and prevent overwrite is enabled
-        $slugColumn = $this->getSlugColumn();
-        if ($this->getPreventOverwrite() && $this->exists && $this->getAttribute($slugColumn)) {
-            return; // Don't overwrite existing slug
-        }
-        
-        // Get extra scope callback
+        // For translated slugs, we need a special scope for uniqueness
         $extraScope = $this->getSlugExtraScope();
+        
+        if ($isSlugTranslated) {
+            $originalExtraScope = $extraScope;
+            $extraScope = function ($query) use ($originalExtraScope) {
+                // Determine locale column and value
+                $locale = app()->getLocale();
+                
+                // Try to find locale column (usually 'locale')
+                $query->where(function ($q) use ($locale) {
+                    $q->where('locale', $locale)
+                        ->orWhere('language_id', $locale); // fallback for some schemas
+                });
+
+                if ($originalExtraScope) {
+                    $originalExtraScope($query);
+                }
+            };
+        }
+
+        // Check if slug already exists and prevent overwrite is enabled
+        if ($this->getPreventOverwrite() && $this->exists) {
+            $currentSlug = $isSlugTranslated 
+                ? $this->getTranslatedSlugSourceValue($slugColumn)
+                : $this->getAttribute($slugColumn);
+                
+            if (!empty($currentSlug)) {
+                return;
+            }
+        }
         
         // Generate unique slug
         $slug = $slugService->generateUnique(
@@ -99,14 +125,18 @@ trait HasSlug
             $table,
             $slugColumn,
             $this->getSlugSeparator(),
-            $excludeId,
+            $isSlugTranslated ? null : $excludeId, // excludeId works differently for translations
             $extraScope,
             $this->getSlugSuffixStartFrom(),
             $this->getUseSuffixOnFirstOccurrence(),
             $this->getSlugSuffixGenerator()
         );
 
-        $this->setAttribute($slugColumn, $slug);
+        if ($isSlugTranslated) {
+            $this->setTranslatedSlugAttribute($slugColumn, $slug);
+        } else {
+            $this->setAttribute($slugColumn, $slug);
+        }
     }
 
 
@@ -604,6 +634,96 @@ trait HasSlug
         return property_exists($this, 'slugSourceTranslationKey') && isset($this->slugSourceTranslationKey)
             ? $this->slugSourceTranslationKey
             : null;
+    }
+
+    /**
+     * Check if slug itself is translated
+     */
+    public function getSlugIsTranslated(): bool
+    {
+        $options = $this->getSlugOptions();
+        if ($options) {
+            return $options->getSlugIsTranslated();
+        }
+
+        return property_exists($this, 'slugIsTranslated') && isset($this->slugIsTranslated)
+            ? $this->slugIsTranslated
+            : false;
+    }
+
+    /**
+     * Get the table name for slug translations
+     */
+    protected function getSlugTranslationTable(): string
+    {
+        // 1. Check if model has translations relationship
+        if (method_exists($this, 'translations')) {
+            return $this->translations()->getRelated()->getTable();
+        }
+
+        // 2. Guess from table name (e.g., articles -> article_translations)
+        $table = $this->getTable();
+        $singular = \Illuminate\Support\Str::singular($table);
+        
+        $guesses = [
+            $table . '_translations',
+            $table . '_translation',
+            $singular . '_translations',
+            $singular . '_translation',
+            'translations'
+        ];
+
+        foreach ($guesses as $guess) {
+            if (\Illuminate\Support\Facades\Schema::hasTable($guess)) {
+                return $guess;
+            }
+        }
+
+        return $table; // Fallback to main table
+    }
+
+    /**
+     * Set slug attribute on translation model
+     */
+    protected function setTranslatedSlugAttribute(string $column, string $value): void
+    {
+        // Priority 1: Use setTranslation method (Spatie style)
+        if (method_exists($this, 'setTranslation')) {
+            $this->setTranslation($column, app()->getLocale(), $value);
+            return;
+        }
+
+        // Priority 2: Use Astrotomic style (translate()->column = value)
+        if (method_exists($this, 'translateOrNew')) {
+            $this->translateOrNew(app()->getLocale())->{$column} = $value;
+            return;
+        }
+        
+        if (method_exists($this, 'translate')) {
+            $translation = $this->translate(app()->getLocale());
+            if ($translation) {
+                $translation->{$column} = $value;
+                return;
+            }
+        }
+
+        // Priority 3: Set on relationship directly
+        if (method_exists($this, 'translations')) {
+            $locale = app()->getLocale();
+            $translation = $this->translations->where('locale', $locale)->first();
+            if ($translation) {
+                $translation->{$column} = $value;
+                return;
+            }
+        }
+
+        // Priority 4: Custom implementation for pending translations property
+        if (property_exists($this, 'pendingTranslations')) {
+            $this->pendingTranslations[app()->getLocale()][$column] = $value;
+        }
+
+        // Fallback: Set on main model (might be caught by translation package's __set)
+        $this->setAttribute($column, $value);
     }
 
     /**

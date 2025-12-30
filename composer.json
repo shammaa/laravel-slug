@@ -3,7 +3,7 @@
     "description": "Professional Arabic-friendly slug generator for Laravel with automatic model integration",
     "type": "library",
     "license": "MIT",
-    "version": "1.4.1",
+    "version": "1.5.0",
     "authors": [
         {
             "name": "Shadi Shammaa",
@@ -46,4 +46,3 @@
     "minimum-stability": "stable",
     "prefer-stable": true
 }
-

@@ -177,8 +177,9 @@ public function getSlugOptions(): SlugOptions
         ->startSlugSuffixFrom(2)                       // Start suffix from 2
         ->useSuffixOnFirstOccurrence()                 // Always add suffix
         ->usingSuffixGenerator(fn($slug, $iter) => bin2hex(random_bytes(4)))  // Custom suffix
-        ->sourceIsTranslated(true)                     // Translated field
-        ->sourceTranslationKey('name');               // Translation key
+        ->sourceIsTranslated(true)                     // Source field is in translation table
+        ->sourceTranslationKey('name')                // Optional translation key
+        ->slugIsTranslated(true);                      // Slug itself is in translation table
 }
 ```
 
@@ -341,6 +342,32 @@ $taxonomy->save();
 - Works with any translation package (Spatie, Astrotomic, custom, etc.)
 - Detects translations before save (pending) or after save (from database)
 - Supports all common patterns: `translate()`, `setTranslation()`, `getTranslation()`, etc.
+
+### Translated Slugs (Full Support)
+
+If you want the **slug itself** to be stored in the translation table (highly recommended for SEO multilinguality):
+
+```php
+class Article extends Model
+{
+    use HasSlug;
+
+    public function getSlugOptions(): SlugOptions
+    {
+        return SlugOptions::create()
+            ->generateSlugsFrom('name')     // Search 'name' in translation
+            ->saveSlugsTo('slug')          // Save 'slug' in translation
+            ->sourceIsTranslated(true)     // Enable translated source
+            ->slugIsTranslated(true);      // Enable translated destination
+    }
+}
+```
+
+**What this does:**
+1.  **Detection:** The package will look for the `name` field in the translation table (e.g. `article_translations`).
+2.  **Uniqueness:** It will check for slug uniqueness **inside the translation table** scoped by the current locale.
+3.  **Storage:** It will save the generated slug directly into the translation record for the current locale.
+4.  **Auto-Table:** It automatically detects your translation table (e.g. `articles` → `article_translations`).
 
 ### Manual Slug Generation
 

@@ -19,6 +19,7 @@ class SlugOptions
     protected bool $useSuffixOnFirstOccurrence = false;
     protected mixed $suffixGenerator = null;
     protected bool $sourceIsTranslated = false;
+    protected bool $slugIsTranslated = false;
     protected ?string $sourceTranslationKey = null;
 
     /**
@@ -138,6 +139,15 @@ class SlugOptions
     }
 
     /**
+     * Mark slug column as translated
+     */
+    public function slugIsTranslated(bool $isTranslated = true): self
+    {
+        $this->slugIsTranslated = $isTranslated;
+        return $this;
+    }
+
+    /**
      * Set source translation key
      */
     public function sourceTranslationKey(?string $key): self
@@ -215,6 +225,11 @@ class SlugOptions
     public function getSourceIsTranslated(): bool
     {
         return $this->sourceIsTranslated;
+    }
+
+    public function getSlugIsTranslated(): bool
+    {
+        return $this->slugIsTranslated;
     }
 
     public function getSourceTranslationKey(): ?string
