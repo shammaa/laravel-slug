@@ -96,11 +96,15 @@ trait HasSlug
                 // Determine locale column and value
                 $locale = app()->getLocale();
                 
-                // Try to find locale column (usually 'locale')
-                $query->where(function ($q) use ($locale) {
-                    $q->where('locale', $locale)
-                        ->orWhere('language_id', $locale); // fallback for some schemas
-                });
+                // Get locale column name dynamically (to avoid 'language_id' errors)
+                $localeColumn = 'locale';
+                if (method_exists($this, 'getLocaleColumn')) {
+                    $localeColumn = $this->getLocaleColumn();
+                } elseif (property_exists($this, 'localeColumn')) {
+                    $localeColumn = $this->localeColumn;
+                }
+                
+                $query->where($localeColumn, $locale);
 
                 if ($originalExtraScope) {
                     $originalExtraScope($query);
