@@ -70,76 +70,104 @@ trait HasSlug
      */
     public function generateSlug(): void
     {
-        $sourceValue = $this->getSlugSourceValue();
+        $isSlugTranslated = $this->getSlugIsTranslated();
+        $slugColumn = $this->getSlugColumn();
+        $slugService = app(SlugService::class);
+        $excludeId = $this->exists ? $this->getKey() : null;
+        $table = $isSlugTranslated ? $this->getSlugTranslationTable() : $this->getTable();
 
-        if (empty($sourceValue)) {
+        // If not translated, generate normally
+        if (!$isSlugTranslated) {
+            $sourceValue = $this->getSlugSourceValue();
+            if (empty($sourceValue)) return;
+
+            $slug = $slugService->generateUnique(
+                $sourceValue, $table, $slugColumn, $this->getSlugSeparator(), 
+                $excludeId, $this->getSlugExtraScope(),
+                $this->getSlugSuffixStartFrom(), $this->getUseSuffixOnFirstOccurrence(), $this->getSlugSuffixGenerator()
+            );
+            $this->setAttribute($slugColumn, $slug);
             return;
         }
 
-        $slugService = app(SlugService::class);
+        // For translated slugs, identify which locales to generate for
+        $locales = [];
+        if (property_exists($this, 'pendingTranslations') && !empty($this->pendingTranslations)) {
+            $locales = array_keys($this->pendingTranslations);
+        }
         
-        $isSlugTranslated = $this->getSlugIsTranslated();
-        $slugColumn = $this->getSlugColumn();
+        // Ensure current locale is included if translations already exist or if it's the only one
+        if (empty($locales)) {
+            $locales = [app()->getLocale()];
+        } else {
+            $locales = array_unique(array_merge($locales, [app()->getLocale()]));
+        }
 
-        // Check if we're updating an existing model
-        $excludeId = $this->exists ? $this->getKey() : null;
-        
-        // Get table name (main table or translations table)
-        $table = $isSlugTranslated ? $this->getSlugTranslationTable() : $this->getTable();
-        
-        // For translated slugs, we need a special scope for uniqueness
-        $extraScope = $this->getSlugExtraScope();
-        
-        if ($isSlugTranslated) {
-            $originalExtraScope = $extraScope;
-            $extraScope = function ($query) use ($originalExtraScope) {
-                // Determine locale column and value
-                $locale = app()->getLocale();
-                
-                // Get locale column name dynamically (to avoid 'language_id' errors)
-                $localeColumn = 'locale';
-                if (method_exists($this, 'getLocaleColumn')) {
-                    $localeColumn = $this->getLocaleColumn();
-                } elseif (property_exists($this, 'localeColumn')) {
-                    $localeColumn = $this->localeColumn;
-                }
-                
+        foreach ($locales as $locale) {
+            $sourceValue = $this->getTranslatedSlugSourceValue($this->getSlugSourceField(), $locale);
+            
+            if (empty($sourceValue)) {
+                continue;
+            }
+
+            // Uniqueness scope for this specific locale
+            $extraScope = function ($query) use ($locale) {
+                $localeColumn = method_exists($this, 'getLocaleColumn') ? $this->getLocaleColumn() : 'locale';
                 $query->where($localeColumn, $locale);
-
+                
+                $originalExtraScope = $this->getSlugExtraScope();
                 if ($originalExtraScope) {
                     $originalExtraScope($query);
                 }
             };
-        }
 
-        // Check if slug already exists and prevent overwrite is enabled
-        if ($this->getPreventOverwrite() && $this->exists) {
-            $currentSlug = $isSlugTranslated 
-                ? $this->getTranslatedSlugSourceValue($slugColumn)
-                : $this->getAttribute($slugColumn);
-                
-            if (!empty($currentSlug)) {
-                return;
+            // Check prevent overwrite
+            if ($this->getPreventOverwrite() && $this->exists) {
+                if (!empty($this->getTranslatedSlugSourceValue($slugColumn, $locale))) {
+                    continue;
+                }
             }
-        }
-        
-        // Generate unique slug
-        $slug = $slugService->generateUnique(
-            $sourceValue,
-            $table,
-            $slugColumn,
-            $this->getSlugSeparator(),
-            $isSlugTranslated ? null : $excludeId, // excludeId works differently for translations
-            $extraScope,
-            $this->getSlugSuffixStartFrom(),
-            $this->getUseSuffixOnFirstOccurrence(),
-            $this->getSlugSuffixGenerator()
-        );
 
-        if ($isSlugTranslated) {
-            $this->setTranslatedSlugAttribute($slugColumn, $slug);
-        } else {
-            $this->setAttribute($slugColumn, $slug);
+            $slug = $slugService->generateUnique(
+                $sourceValue, $table, $slugColumn, $this->getSlugSeparator(),
+                null, // excludeId handled via extraScope for translations
+                $extraScope,
+                $this->getSlugSuffixStartFrom(), $this->getUseSuffixOnFirstOccurrence(), $this->getSlugSuffixGenerator()
+            );
+
+            // Save for this specific locale
+            $this->setTranslatedSlugAttributeForLocale($slugColumn, $slug, $locale);
+        }
+    }
+
+    /**
+     * Helper: Set translated slug attribute for a specific locale
+     */
+    protected function setTranslatedSlugAttributeForLocale(string $column, string $value, string $locale): void
+    {
+        // Shammaa Style setTranslation($key, $value, $locale) detection
+        if (method_exists($this, 'setTranslation')) {
+            try {
+                $reflection = new \ReflectionMethod($this, 'setTranslation');
+                $params = $reflection->getParameters();
+                $secondParamName = isset($params[1]) ? $params[1]->getName() : '';
+
+                if ($secondParamName === 'value' || $secondParamName === 'translations' || $secondParamName === 'data') {
+                    $this->setTranslation($column, $value, $locale);
+                    return;
+                }
+            } catch (\Exception $e) {}
+            
+            // Default to ($key, $locale, $value)
+            $this->setTranslation($column, $locale, $value);
+            return;
+        }
+
+        // Other patterns...
+        if (method_exists($this, 'translateOrNew')) {
+            $this->translateOrNew($locale)->{$column} = $value;
+        } elseif (property_exists($this, 'pendingTranslations')) {
+            $this->pendingTranslations[$locale][$column] = $value;
         }
     }
 
