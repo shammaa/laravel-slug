@@ -693,9 +693,24 @@ trait HasSlug
      */
     protected function setTranslatedSlugAttribute(string $column, string $value): void
     {
-        // Priority 1: Use setTranslation method (Spatie style)
+        // Priority 1: Use setTranslation method (Supports both Spatie and Shammaa styles)
         if (method_exists($this, 'setTranslation')) {
-            $this->setTranslation($column, app()->getLocale(), $value);
+            try {
+                $reflection = new \ReflectionMethod($this, 'setTranslation');
+                $params = $reflection->getParameters();
+                $secondParamName = isset($params[1]) ? $params[1]->getName() : '';
+
+                if ($secondParamName === 'value' || $secondParamName === 'translations' || $secondParamName === 'data') {
+                    // Shammaa style: setTranslation($key, $value, $locale)
+                    $this->setTranslation($column, $value, app()->getLocale());
+                } else {
+                    // Spatie style: setTranslation($key, $locale, $value)
+                    $this->setTranslation($column, app()->getLocale(), $value);
+                }
+            } catch (\Exception $e) {
+                // Fallback to default guess if reflection fails
+                $this->setTranslation($column, app()->getLocale(), $value);
+            }
             return;
         }
 
