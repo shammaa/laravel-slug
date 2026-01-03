@@ -169,12 +169,11 @@ class SlugService
         // Remove separator from start and end
         $string = trim($string, $separator);
 
-        // Convert Latin letters to lowercase (only if not preserving original)
-        if (!$this->preserveOriginal) {
-            $string = preg_replace_callback('/[a-zA-Z]+/', function ($matches) {
-                return strtolower($matches[0]);
-            }, $string);
-        }
+        // Convert Latin letters to lowercase (always, for SEO best practices)
+        // The preserveOriginal option only applies to non-Latin characters (Arabic, etc.)
+        $string = preg_replace_callback('/[a-zA-Z]+/', function ($matches) {
+            return strtolower($matches[0]);
+        }, $string);
 
         // If preserving original, keep the string as is (Unicode is supported in modern URLs)
         // No encoding needed - modern browsers and servers handle Unicode slugs correctly
